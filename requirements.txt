@@ -1,0 +1,6 @@
+torch>=2.0
+torchvision
+Pillow
+matplotlib
+pytorch-msssim
+compressai

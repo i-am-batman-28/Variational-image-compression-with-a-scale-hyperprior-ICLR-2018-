@@ -1,0 +1,21 @@
+# python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+
+# heavy artifacts
+checkpoints/
+*.pt
+*.pth
+
+# cloned reference repo (cite in README, don't vendor)
+references/
+
+# macOS
+.DS_Store
+
+# editor
+.vscode/
+.idea/
