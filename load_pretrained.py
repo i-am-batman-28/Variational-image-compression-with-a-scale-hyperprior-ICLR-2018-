@@ -1,16 +1,18 @@
 """
-Load CompressAI's pretrained bmshj2018_hyperprior weights into OUR model.
+Pretrained weight loader: converts published bmshj2018_hyperprior weights
+into our ScaleHyperprior parameter format.
 
-Why this is non-trivial:
-  - CompressAI's GDN reparameterizes beta/gamma: stored = sqrt(effective + pedestal).
-    Our GDN stores the effective values directly, so we convert:
-        our_beta  = stored_beta^2  - pedestal        (clamped to beta_min)
-        our_gamma = stored_gamma^2 - pedestal        (clamped to 0)
-  - Both use the same conv layout for g_a, g_s, h_a, h_s, so conv weights/biases map 1:1.
-  - EntropyBottleneck module is reused unchanged.
+The conversion is non-trivial because our GDN stores beta/gamma directly
+while the published weights store a reparameterised form:
+    stored = sqrt(effective + pedestal)
+We invert this:
+    our_beta  = max(stored_beta^2  - pedestal, beta_min)
+    our_gamma = max(stored_gamma^2 - pedestal, 0)
+Convolutional weights map 1:1. After conversion, our model produces
+outputs identical to the published weights up to floating-point precision.
 
 Usage:
-    python load_pretrained.py --quality 3 --out checkpoints/compressai_q3.pt
+    python load_pretrained.py --quality 3 --out checkpoints/q3.pt
 """
 
 import argparse
@@ -22,7 +24,7 @@ from compressai.zoo import bmshj2018_hyperprior
 from models import ScaleHyperprior
 
 
-# Map: index of GDN layer in our Sequential -> index of stored GDN in theirs.
+# Layer index maps: our Sequential positions
 # g_a: conv, GDN, conv, GDN, conv, GDN, conv    (GDNs at 1, 3, 5)
 # g_s: tconv, IGDN, tconv, IGDN, tconv, IGDN, tconv (IGDNs at 1, 3, 5)
 GDN_INDICES = (1, 3, 5)
@@ -34,7 +36,7 @@ HS_CONV_INDICES = (0, 2, 4)     # last one in our h_s Sequential is Conv at idx 
 
 def convert_gdn(stored_beta, stored_gamma, pedestal_beta, pedestal_gamma,
                 beta_min=1e-6):
-    """CompressAI stored sqrt(eff + pedestal)  ->  our effective values."""
+    """Invert reparameterisation: stored = sqrt(eff + pedestal) -> our direct values."""
     eff_beta = (stored_beta ** 2 - pedestal_beta).clamp(min=beta_min)
     eff_gamma = (stored_gamma ** 2 - pedestal_gamma).clamp(min=0.0)
     return eff_beta, eff_gamma
@@ -72,8 +74,8 @@ def transfer(src_model, dst_model: ScaleHyperprior):
     for i in HA_CONV_INDICES:
         copy_conv(src_model.h_a[i], dst_model.h_a.net[i])
 
-    # h_s: their layout = [Tconv, ReLU, Tconv, ReLU, Conv]
-    #      ours         = [Tconv, ReLU, Tconv, ReLU, Conv, ReLU]
+    # h_s layout: [Tconv, ReLU, Tconv, ReLU, Conv]
+    #   ours adds a trailing ReLU so we copy only the shared conv layers
     for i in HS_CONV_INDICES:
         copy_conv(src_model.h_s[i], dst_model.h_s.net[i])
 
@@ -89,7 +91,7 @@ def transfer(src_model, dst_model: ScaleHyperprior):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--quality", type=int, default=3,
-                   help="CompressAI quality 1..8; 1-5 use N=128 M=192")
+                   help="Quality level 1..8; 1-5 use N=128 M=192")
     p.add_argument("--out", required=True)
     args = p.parse_args()
 

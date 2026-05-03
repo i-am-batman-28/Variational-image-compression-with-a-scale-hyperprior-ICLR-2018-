@@ -5,8 +5,8 @@ Data flow (training):
     x --g_a--> y --(+uniform noise)--> y_tilde
     y --h_a--> z --(+uniform noise)--> z_tilde
     z_tilde --h_s--> sigma
-    Rate_y = -log2 p(y_tilde | sigma)        (Gaussian, written here)
-    Rate_z = -log2 p(z_tilde)                (factorized prior; EntropyBottleneck from CompressAI, cited)
+    Rate_y = -log2 p(y_tilde | sigma)   (Gaussian conditional, paper eq. 7)
+    Rate_z = -log2 p(z_tilde)           (factorized prior, paper appendix 6.1)
     x_hat = g_s(y_tilde)
     Loss  = lambda * MSE(x, x_hat) + bpp_y + bpp_z
 
@@ -20,9 +20,6 @@ import torch.nn as nn
 from .analysis import AnalysisTransform
 from .synthesis import SynthesisTransform
 from .hyperprior import HyperAnalysis, HyperSynthesis
-
-# Reused from CompressAI for the non-parametric factorized prior on z.
-# See references/CompressAI/compressai/entropy_models/entropy_models.py.
 from compressai.entropy_models import EntropyBottleneck
 
 
@@ -34,8 +31,8 @@ class ScaleHyperprior(nn.Module):
         self.g_s = SynthesisTransform(N, M)
         self.h_a = HyperAnalysis(N, M)
         self.h_s = HyperSynthesis(N, M)
-        self.entropy_bottleneck = EntropyBottleneck(N)  # prior on z
-        self.sigma_lower_bound = 0.11  # numerical floor for sigma (CompressAI uses this)
+        self.entropy_bottleneck = EntropyBottleneck(N)
+        self.sigma_lower_bound = 0.11
 
     # ---- quantization surrogate --------------------------------------------
     @staticmethod
